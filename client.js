@@ -91,6 +91,7 @@ window.__ModuleLoader__.load({
       const [rows, setRows] = React.useState([]);
       const [cmd, setCmd] = React.useState("");
       const [autoReply, setAutoReply] = React.useState(true);
+      const [streamReplies, setStreamReplies] = React.useState(true);
       const [saved, setSaved] = React.useState(false);
       const [loadTick, setLoadTick] = React.useState(0);
 
@@ -106,6 +107,7 @@ window.__ModuleLoader__.load({
             setRows(Object.entries(routes).map(([k, v]) => ({ handle: k, workspace: v })));
             setCmd(typeof cfg?.imsgCmd === "string" ? cfg.imsgCmd : "");
             if (typeof cfg?.autoReply === "boolean") setAutoReply(cfg.autoReply);
+            if (typeof cfg?.streamReplies === "boolean") setStreamReplies(cfg.streamReplies);
             setState({ status: "ready", writable: cfg?.writable !== false });
           }, () => {
             if (current) setState({ status: "error", writable: true });
@@ -129,7 +131,7 @@ window.__ModuleLoader__.load({
       };
 
       const save = () => {
-        const payload = { routes: buildRoutes(), autoReply };
+        const payload = { routes: buildRoutes(), autoReply, streamReplies };
         if (cmd.trim()) payload.imsgCmd = cmd.trim();
         else payload.clearImsgCmd = true;
         Promise.resolve()
@@ -206,6 +208,18 @@ window.__ModuleLoader__.load({
                 onChange: (e) => setAutoReply(e.target.checked),
               }),
               S.jsx("span", { children: "自动回复（收到外部 iMessage 后自动路由并回复 sender）" }),
+            ],
+          }),
+          S.jsxs("label", {
+            style: { marginTop: 10, display: "flex", alignItems: "center", gap: 8, cursor: writable ? "pointer" : "default" },
+            children: [
+              S.jsx("input", {
+                type: "checkbox",
+                checked: streamReplies,
+                disabled: !writable,
+                onChange: (e) => setStreamReplies(e.target.checked),
+              }),
+              S.jsx("span", { children: "流式发送（处理过程中每条回复即时发出，不等全部完成）" }),
             ],
           }),
           S.jsxs("div", {

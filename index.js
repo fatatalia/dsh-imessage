@@ -28,11 +28,12 @@ export const Config = z.object({
   statePath: z.string().default(join(homedir(), ".dsh", "imessage-gateway-state.json")),
 });
 
-/** `imessage` settings namespace 数据 schema：路由表 + imsgCmd + autoReply。 */
+/** `imessage` settings namespace 数据 schema：路由表 + imsgCmd + autoReply + streamReplies。 */
 const GatewaySchema = z.object({
   routes: z.dict(z.string()),
   imsgCmd: z.string().required(),
   autoReply: z.boolean(),
+  streamReplies: z.boolean(),
 });
 
 // ── Typert wire schemas ───────────────────────────────────────────────────
@@ -98,7 +99,8 @@ class GatewayService extends TypertRemoteService {
     const routes = snap?.routes && typeof snap.routes === "object" ? snap.routes : {};
     const imsgCmd = typeof snap?.imsgCmd === "string" ? snap.imsgCmd : "";
     const autoReply = snap?.autoReply !== false;
-    return { routes, imsgCmd, autoReply, writable: true };
+    const streamReplies = snap?.streamReplies !== false;
+    return { routes, imsgCmd, autoReply, streamReplies, writable: true };
   }
 
   /** 写入配置（稀疏合并）到 settings.yaml 的 imessage 用户层。 */
@@ -108,6 +110,7 @@ class GatewayService extends TypertRemoteService {
     if (payload?.clearImsgCmd) patch.imsgCmd = "";
     else if (typeof payload?.imsgCmd === "string") patch.imsgCmd = payload.imsgCmd;
     if (typeof payload?.autoReply === "boolean") patch.autoReply = payload.autoReply;
+    if (typeof payload?.streamReplies === "boolean") patch.streamReplies = payload.streamReplies;
     if (Object.keys(patch).length === 0) return { ok: true };
     await this.scope.update(patch);
     return { ok: true };

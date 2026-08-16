@@ -12,6 +12,8 @@
 import { TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import z from "@deepseek-ai/schemastery";
 import { defineTool } from "@deepseek-ai/dsh-tools";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { GatewayCore, splitCmd } from "./lib/gateway-core.mjs";
 
 export const name = "dsh-imessage";
@@ -20,9 +22,10 @@ export const name = "dsh-imessage";
 export const inject = ["typert", "settings", "agents", "agentDefaultModel", "agentPresets", "sessions", "workspaceRegistry", "sessionPersistence", "sessionTitle", "tools"];
 
 // 插件自身 config schema（settingsPath 指向 $DSH_HOME/settings.yaml；statePath 存 sender→会话映射）。
+// 默认值基于 homedir() 推导，不写死个人路径。
 export const Config = z.object({
-  settingsPath: z.string().default("/Users/fatatalia/.dsh/settings.yaml"),
-  statePath: z.string().default("/Users/fatatalia/.dsh/imessage-gateway-state.json"),
+  settingsPath: z.string().default(join(homedir(), ".dsh", "settings.yaml")),
+  statePath: z.string().default(join(homedir(), ".dsh", "imessage-gateway-state.json")),
 });
 
 /** `imessage` settings namespace 数据 schema：路由表 + imsgCmd + autoReply。 */
@@ -115,7 +118,7 @@ export function apply(ctx, config) {
   // 注册 schema + 拿 scope（host 侧读写，落盘 settings.yaml）。
   const scope = ctx.settings.register("imessage", GatewaySchema, {
     base: {
-      routes: { "+8613800000000": "/Users/fatatalia/dsh/mayacode" },
+      routes: { "+8613800000000": join(homedir(), "dsh", "mayacode") },
       imsgCmd: "imsg",
       autoReply: true,
     },

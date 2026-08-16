@@ -65,7 +65,7 @@ window.__ModuleLoader__.load({
           }),
           S.jsx("input", {
             style: { flex: 1, padding: "4px 8px", borderRadius: 6, border: "1px solid var(--dsw-alias-divider, #ddd)" },
-            placeholder: "工作区绝对路径，如 /Users/fatatalia/dsh/mayacode",
+            placeholder: "工作区绝对路径，如 /Users/<you>/dsh/mayacode",
             value: workspace,
             disabled,
             onChange: (e) => onChange("workspace", e.target.value),

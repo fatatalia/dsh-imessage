@@ -1,0 +1,5 @@
+# dsh-imessage bundle patch
+# 插入 host 插件行：注册 imessage settings namespace + 网关监听 + message 工具。
+- insert:
+    - id: dsh-imessage
+      name: dsh-imessage

@@ -22,7 +22,7 @@ dsh web 进程（LaunchDaemon，KeepAlive）
 - **固定会话**：同一 sender 固定同一 session（id 按 handle 哈希稳定）；live 复用 / resume / create
 - **归档迁移**：原会话被 UI 归档后不再 resume，自动新建会话并持久化映射（`~/.dsh/imessage-gateway-state.json`），新消息延续新会话
 - **已读回执**：收到外部消息后立即发 read（`imsg status --json` 探测 `read_receipts`，支持才启用）
-- **typing 跟随模型调用**：agent 事件 `step/start`（模型推理开始）→ typing on，`step/end`（模型返回）→ typing off；多轮 LLM（工具循环）自然交替；duration 5s + 兜底 stop 防卡死
+- **typing 跟随模型调用**：agent 事件 `step/start`（模型推理开始）→ typing on，`step/end`（模型返回）→ typing off；多轮 LLM（工具循环）自然交替；duration 60s + 兜底 stop 防卡死
 - **出站**：RPC `send`；网关以 root 运行时经 `sudo -u <user>` 降级执行
 - **共存**：与 OpenClaw 各自多读 chat.db，互不互斥（同一消息两边都可能回复）
 

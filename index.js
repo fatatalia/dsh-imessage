@@ -130,10 +130,11 @@ export function apply(ctx, config) {
   // 启动 iMessage 网关监听（RPC watch.subscribe + 投递 + 自动回复）。
   // 孤儿：作为 host 插件创建，随 web 进程生命周期启停。
   const Logger = ctx.logger;
+  const ts = () => new Date().toISOString();
   const log = {
-    info: (m) => { console.log(`[im] ${m}`); try { Logger?.info?.(m); } catch {} },
-    warn: (m) => { console.warn(`[im:warn] ${m}`); try { Logger?.warn?.(m); } catch {} },
-    error: (m) => { console.error(`[im:err] ${m}`); try { Logger?.error?.(m); } catch {} },
+    info: (m) => { console.log(`[${ts()}] [im] ${m}`); try { Logger?.info?.(m); } catch {} },
+    warn: (m) => { console.warn(`[${ts()}] [im:warn] ${m}`); try { Logger?.warn?.(m); } catch {} },
+    error: (m) => { console.error(`[${ts()}] [im:err] ${m}`); try { Logger?.error?.(m); } catch {} },
     debug: (m) => { try { Logger?.debug?.(m); } catch {} },
   };
   log.info("GatewayCore 创建，依赖注入完成（agents/sessions/defaultModel/agentPresets）");

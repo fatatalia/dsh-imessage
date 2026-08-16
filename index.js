@@ -133,7 +133,13 @@ export function apply(ctx, config) {
   // 启动 iMessage 网关监听（RPC watch.subscribe + 投递 + 自动回复）。
   // 孤儿：作为 host 插件创建，随 web 进程生命周期启停。
   const Logger = ctx.logger;
-  const ts = () => new Date().toISOString();
+  // 本地时间戳（时区跟随系统，如 Asia/Shanghai +08）。曾用 toISOString() 输出 UTC，
+  // 本地 16:xx 显示 08:xxZ 造成误解。
+  const ts = () => {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  };
   const log = {
     info: (m) => { console.log(`[${ts()}] [im] ${m}`); try { Logger?.info?.(m); } catch {} },
     warn: (m) => { console.warn(`[${ts()}] [im:warn] ${m}`); try { Logger?.warn?.(m); } catch {} },

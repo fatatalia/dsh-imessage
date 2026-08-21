@@ -28,12 +28,13 @@ export const Config = z.object({
   statePath: z.string().default(join(homedir(), ".dsh", "imessage-gateway-state.json")),
 });
 
-/** `imessage` settings namespace 数据 schema：路由表 + imsgCmd + autoReply + streamReplies。 */
+/** `imessage` settings namespace 数据 schema：路由表 + imsgCmd + autoReply + streamReplies + toolCallReplies。 */
 const GatewaySchema = z.object({
   routes: z.dict(z.string()),
   imsgCmd: z.string().required(),
   autoReply: z.boolean(),
   streamReplies: z.boolean(),
+  toolCallReplies: z.boolean(),
 });
 
 // ── Typert wire schemas ───────────────────────────────────────────────────
@@ -100,28 +101,40 @@ class GatewayService extends TypertRemoteService {
     const imsgCmd = typeof snap?.imsgCmd === "string" ? snap.imsgCmd : "";
     const autoReply = snap?.autoReply !== false;
     const streamReplies = snap?.streamReplies !== false;
-    return { routes, imsgCmd, autoReply, streamReplies, writable: true };
+    const toolCallReplies = snap?.toolCallReplies !== false;
+    return { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, writable: true };
   }
 
-  /** 写入配置（稀疏合并）到 settings.yaml 的 imessage 用户层。 */
+  /** 写入配置到 settings.yaml 的 imessage 用户层。
+   * 用 replace（整体替换）而非 update（merge）：settings 的 update 是递归深合并，
+   * patch 里缺失的键（如被删除的路由）会保留旧值——用户删路由后保存不生效。
+   * client 保存总是传完整状态（routes 全表 + 各开关），replace 语义正确。
+   */
   async setConfig(payload) {
-    const patch = {};
-    if (payload?.routes && typeof payload.routes === "object") patch.routes = payload.routes;
-    if (payload?.clearImsgCmd) patch.imsgCmd = "";
-    else if (typeof payload?.imsgCmd === "string") patch.imsgCmd = payload.imsgCmd;
-    if (typeof payload?.autoReply === "boolean") patch.autoReply = payload.autoReply;
-    if (typeof payload?.streamReplies === "boolean") patch.streamReplies = payload.streamReplies;
-    if (Object.keys(patch).length === 0) return { ok: true };
-    await this.scope.update(patch);
+    const current = this.scope.get() ?? {};
+    const routes = payload?.routes && typeof payload.routes === "object"
+      ? payload.routes
+      : current.routes && typeof current.routes === "object" ? current.routes : {};
+    const imsgCmd = payload?.clearImsgCmd
+      ? ""
+      : typeof payload?.imsgCmd === "string" ? payload.imsgCmd : typeof current.imsgCmd === "string" ? current.imsgCmd : "imsg";
+    const autoReply = typeof payload?.autoReply === "boolean" ? payload.autoReply : current.autoReply !== false;
+    const streamReplies = typeof payload?.streamReplies === "boolean" ? payload.streamReplies : current.streamReplies !== false;
+    const toolCallReplies = typeof payload?.toolCallReplies === "boolean" ? payload.toolCallReplies : current.toolCallReplies !== false;
+    const section = { routes, imsgCmd, autoReply, streamReplies, toolCallReplies };
+    try { console.log(`[${new Date().toLocaleString("zh-CN", { hour12: false })}] [im] setConfig: replace section=${JSON.stringify(section).slice(0, 240)}`); } catch { /* ignore */ }
+    await this.scope.replace(section);
     return { ok: true };
   }
 }
 
 export function apply(ctx, config) {
   // 注册 schema + 拿 scope（host 侧读写，落盘 settings.yaml）。
+  // base 只放中性默认值：routes 不能硬编码具体号码（base+user 合并会让删除的路由
+  // 又回来——"删路由不生效"的根因），业务路由全部走 user 层。
   const scope = ctx.settings.register("imessage", GatewaySchema, {
     base: {
-      routes: { "+8613800000000": join(homedir(), "dsh", "mayacode") },
+      routes: {},
       imsgCmd: "imsg",
       autoReply: true,
     },
@@ -132,8 +145,7 @@ export function apply(ctx, config) {
 
   // 启动 iMessage 网关监听（RPC watch.subscribe + 投递 + 自动回复）。
   // 孤儿：作为 host 插件创建，随 web 进程生命周期启停。
-  const Logger = ctx.logger;
-  // 本地时间戳（时区跟随系统，如 Asia/Shanghai +08）。曾用 toISOString() 输出 UTC，
+  const Logger = ctx.logger;  // 本地时间戳（时区跟随系统，如 Asia/Shanghai +08）。曾用 toISOString() 输出 UTC，
   // 本地 16:xx 显示 08:xxZ 造成误解。
   const ts = () => {
     const d = new Date();
@@ -161,6 +173,12 @@ export function apply(ctx, config) {
   });
   ctx.on("dispose", () => core.stopListener());
   core.startListener().then(() => log.info("网关监听已启动")).catch((e) => log.error(`启动监听失败 ${e instanceof Error ? e.message : e}`));
+
+  // 配置热更新：配置页保存后立即推给运行中的网关（autoReply/streamReplies/toolCallReplies），无需重启。
+  scope.watch((next) => {
+    core.applyConfig(next);
+    log.info(`配置热更新: routes=${Object.keys(core.routes).length}条 autoReply=${core.autoReply} streamReplies=${core.streamReplies} toolCallReplies=${core.toolCallReplies}`);
+  });
 
   // 注册全局 `message` 工具：任何 agent（含心跳会话）可调用它发 iMessage。
   // 职责归 dsh-imessage 插件；心跳只触发，调用的还是这个工具。

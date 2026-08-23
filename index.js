@@ -28,13 +28,15 @@ export const Config = z.object({
   statePath: z.string().default(join(homedir(), ".dsh", "imessage-gateway-state.json")),
 });
 
-/** `imessage` settings namespace 数据 schema：路由表 + imsgCmd + autoReply + streamReplies + toolCallReplies。 */
+/** `imessage` settings namespace 数据 schema：路由表 + imsgCmd + autoReply + streamReplies + toolCallReplies + stepTimeoutMs。 */
 const GatewaySchema = z.object({
   routes: z.dict(z.string()),
   imsgCmd: z.string().required(),
   autoReply: z.boolean(),
   streamReplies: z.boolean(),
   toolCallReplies: z.boolean(),
+  /** turn 级单步超时（ms）：step 超过该时长被 dsh-turn-guard 强制 cancel；不配/0 = 不限制。 */
+  stepTimeoutMs: z.number(),
 });
 
 // ── Typert wire schemas ───────────────────────────────────────────────────
@@ -102,7 +104,8 @@ class GatewayService extends TypertRemoteService {
     const autoReply = snap?.autoReply !== false;
     const streamReplies = snap?.streamReplies !== false;
     const toolCallReplies = snap?.toolCallReplies !== false;
-    return { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, writable: true };
+    const stepTimeoutMs = typeof snap?.stepTimeoutMs === "number" && snap.stepTimeoutMs > 0 ? snap.stepTimeoutMs : 0;
+    return { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, stepTimeoutMs, writable: true };
   }
 
   /** 写入配置到 settings.yaml 的 imessage 用户层。
@@ -121,7 +124,8 @@ class GatewayService extends TypertRemoteService {
     const autoReply = typeof payload?.autoReply === "boolean" ? payload.autoReply : current.autoReply !== false;
     const streamReplies = typeof payload?.streamReplies === "boolean" ? payload.streamReplies : current.streamReplies !== false;
     const toolCallReplies = typeof payload?.toolCallReplies === "boolean" ? payload.toolCallReplies : current.toolCallReplies !== false;
-    const section = { routes, imsgCmd, autoReply, streamReplies, toolCallReplies };
+    const stepTimeoutMs = typeof payload?.stepTimeoutMs === "number" && payload.stepTimeoutMs > 0 ? payload.stepTimeoutMs : 0;
+    const section = { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, stepTimeoutMs };
     try { console.log(`[${new Date().toLocaleString("zh-CN", { hour12: false })}] [im] setConfig: replace section=${JSON.stringify(section).slice(0, 240)}`); } catch { /* ignore */ }
     await this.scope.replace(section);
     return { ok: true };

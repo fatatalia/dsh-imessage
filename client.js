@@ -93,7 +93,7 @@ window.__ModuleLoader__.load({
       const [autoReply, setAutoReply] = React.useState(true);
       const [streamReplies, setStreamReplies] = React.useState(true);
       const [toolCallReplies, setToolCallReplies] = React.useState(true);
-      const [stepTimeoutMs, setStepTimeoutMs] = React.useState(0);
+      const [stepTimeoutSec, setStepTimeoutSec] = React.useState(0);
       const [saved, setSaved] = React.useState(false);
       const [loadTick, setLoadTick] = React.useState(0);
 
@@ -111,7 +111,7 @@ window.__ModuleLoader__.load({
             if (typeof cfg?.autoReply === "boolean") setAutoReply(cfg.autoReply);
             if (typeof cfg?.streamReplies === "boolean") setStreamReplies(cfg.streamReplies);
             if (typeof cfg?.toolCallReplies === "boolean") setToolCallReplies(cfg.toolCallReplies);
-            if (typeof cfg?.stepTimeoutMs === "number") setStepTimeoutMs(cfg.stepTimeoutMs);
+            if (typeof cfg?.stepTimeoutSec === "number") setStepTimeoutSec(cfg.stepTimeoutSec);
             setState({ status: "ready", writable: cfg?.writable !== false });
           }, () => {
             if (current) setState({ status: "error", writable: true });
@@ -135,7 +135,7 @@ window.__ModuleLoader__.load({
       };
 
       const save = () => {
-        const payload = { routes: buildRoutes(), autoReply, streamReplies, toolCallReplies, stepTimeoutMs };
+        const payload = { routes: buildRoutes(), autoReply, streamReplies, toolCallReplies, stepTimeoutSec };
         if (cmd.trim()) payload.imsgCmd = cmd.trim();
         else payload.clearImsgCmd = true;
         Promise.resolve()
@@ -241,20 +241,20 @@ window.__ModuleLoader__.load({
           S.jsxs("div", {
             style: { marginTop: 12, display: "flex", alignItems: "center", gap: 8 },
             children: [
-              S.jsx("label", { style: { flex: "0 0 auto" }, children: "单步超时（ms）" }),
+              S.jsx("label", { style: { flex: "0 0 auto" }, children: "单步超时（秒）" }),
               S.jsx("input", {
                 type: "number",
                 min: 0,
-                step: 1000,
+                step: 1,
                 style: { width: 140, padding: "4px 8px", borderRadius: 6, border: "1px solid var(--dsw-alias-divider, #ddd)" },
                 placeholder: "0 = 不限制",
-                value: stepTimeoutMs,
+                value: stepTimeoutSec,
                 disabled: !writable,
-                onChange: (e) => setStepTimeoutMs(Number(e.target.value) || 0),
+                onChange: (e) => setStepTimeoutSec(Number(e.target.value) || 0),
               }),
               S.jsx("span", {
                 style: { color: "var(--dsw-alias-label-tertiary)", fontSize: 12 },
-                children: "单步（一次模型请求+工具执行）超过该时长强制中断，0/留空 = 不限制",
+                children: "秒，单步（一次模型请求+工具执行）超过该时长强制中断，0/留空 = 不限制",
               }),
             ],
           }),

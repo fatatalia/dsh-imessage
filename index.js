@@ -37,6 +37,8 @@ const GatewaySchema = z.object({
   toolCallReplies: z.boolean(),
   /** turn 级单步超时（秒）：step 超过该时长被 dsh-turn-guard 强制 cancel；不配/0 = 不限制。 */
   stepTimeoutSec: z.number(),
+  /** 停止指令关键词表：agent 忙碌时整条精确匹配这些词即中断当前轮；不配 = 默认多语言表（见 DEFAULT_STOP_KEYWORDS）。 */
+  stopKeywords: z.array(z.string()),
 });
 
 // ── Typert wire schemas ───────────────────────────────────────────────────
@@ -105,7 +107,8 @@ class GatewayService extends TypertRemoteService {
     const streamReplies = snap?.streamReplies !== false;
     const toolCallReplies = snap?.toolCallReplies !== false;
     const stepTimeoutSec = typeof snap?.stepTimeoutSec === "number" && snap.stepTimeoutSec > 0 ? snap.stepTimeoutSec : 0;
-    return { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, stepTimeoutSec, writable: true };
+    const stopKeywords = Array.isArray(snap?.stopKeywords) ? snap.stopKeywords : undefined;
+    return { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, stepTimeoutSec, stopKeywords, writable: true };
   }
 
   /** 写入配置到 settings.yaml 的 imessage 用户层。
@@ -125,7 +128,10 @@ class GatewayService extends TypertRemoteService {
     const streamReplies = typeof payload?.streamReplies === "boolean" ? payload.streamReplies : current.streamReplies !== false;
     const toolCallReplies = typeof payload?.toolCallReplies === "boolean" ? payload.toolCallReplies : current.toolCallReplies !== false;
     const stepTimeoutSec = typeof payload?.stepTimeoutSec === "number" && payload.stepTimeoutSec > 0 ? payload.stepTimeoutSec : 0;
-    const section = { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, stepTimeoutSec };
+    const stopKeywords = Array.isArray(payload?.stopKeywords)
+      ? payload.stopKeywords
+      : Array.isArray(current?.stopKeywords) ? current.stopKeywords : undefined;
+    const section = { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, stepTimeoutSec, ...(stopKeywords ? { stopKeywords } : {}) };
     try { console.log(`[${new Date().toLocaleString("zh-CN", { hour12: false })}] [im] setConfig: replace section=${JSON.stringify(section).slice(0, 240)}`); } catch { /* ignore */ }
     await this.scope.replace(section);
     return { ok: true };

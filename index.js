@@ -19,7 +19,7 @@ import { GatewayCore, splitCmd } from "./lib/gateway-core.mjs";
 export const name = "dsh-imessage";
 
 // 需要 typert/settings（配置 remote）+ agents/agentPresets/workspaceRegistry/sessionPersistence/sessionTitle/tools（网关投递+归属+标题+message工具）。
-export const inject = ["typert", "settings", "agents", "agentDefaultModel", "agentPresets", "sessions", "workspaceRegistry", "sessionPersistence", "sessionTitle", "tools"];
+export const inject = ["typert", "settings", "agents", "agentDefaultModel", "agentPresets", "sessions", "workspaceRegistry", "sessionPersistence", "sessionTitle", "tools", "shutdownBarrier"];
 
 // 插件自身 config schema（settingsPath 指向 $DSH_HOME/settings.yaml；statePath 存 sender→会话映射）。
 // 默认值基于 homedir() 推导，不写死个人路径。
@@ -183,6 +183,11 @@ export function apply(ctx, config) {
   });
   ctx.on("dispose", () => core.stopListener());
   core.startListener().then(() => log.info("网关监听已启动")).catch((e) => log.error(`启动监听失败 ${e instanceof Error ? e.message : e}`));
+
+  // 注册退出前检查（dsh-shutdown-hook 统一调度）：进程退出前等投递链清空，
+  // 保证重启/停止时未完成的 iMessage 投递不丢失（框架强制，不依赖模型自觉）。
+  ctx.shutdownBarrier.register("imessage-drain", () => core.drain(), { timeoutMs: 5000 });
+  log.info("已注册退出前检查: imessage-drain（投递链清空）");
 
   // 配置热更新：配置页保存后立即推给运行中的网关（autoReply/streamReplies/toolCallReplies），无需重启。
   scope.watch((next) => {

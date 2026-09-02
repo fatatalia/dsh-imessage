@@ -93,6 +93,7 @@ window.__ModuleLoader__.load({
       const [autoReply, setAutoReply] = React.useState(true);
       const [streamReplies, setStreamReplies] = React.useState(true);
       const [toolCallReplies, setToolCallReplies] = React.useState(true);
+      const [plainText, setPlainText] = React.useState(true);
       const [stepTimeoutSec, setStepTimeoutSec] = React.useState(0);
       const [saved, setSaved] = React.useState(false);
       const [loadTick, setLoadTick] = React.useState(0);
@@ -111,6 +112,7 @@ window.__ModuleLoader__.load({
             if (typeof cfg?.autoReply === "boolean") setAutoReply(cfg.autoReply);
             if (typeof cfg?.streamReplies === "boolean") setStreamReplies(cfg.streamReplies);
             if (typeof cfg?.toolCallReplies === "boolean") setToolCallReplies(cfg.toolCallReplies);
+            if (typeof cfg?.plainText === "boolean") setPlainText(cfg.plainText);
             if (typeof cfg?.stepTimeoutSec === "number") setStepTimeoutSec(cfg.stepTimeoutSec);
             setState({ status: "ready", writable: cfg?.writable !== false });
           }, () => {
@@ -135,7 +137,7 @@ window.__ModuleLoader__.load({
       };
 
       const save = () => {
-        const payload = { routes: buildRoutes(), autoReply, streamReplies, toolCallReplies, stepTimeoutSec };
+        const payload = { routes: buildRoutes(), autoReply, streamReplies, toolCallReplies, plainText, stepTimeoutSec };
         if (cmd.trim()) payload.imsgCmd = cmd.trim();
         else payload.clearImsgCmd = true;
         Promise.resolve()
@@ -236,6 +238,18 @@ window.__ModuleLoader__.load({
                 onChange: (e) => setToolCallReplies(e.target.checked),
               }),
               S.jsx("span", { children: "工具执行提示（执行工具时即时发送 🔧 描述，如 bash 的 description）" }),
+            ],
+          }),
+          S.jsxs("label", {
+            style: { marginTop: 10, display: "flex", alignItems: "center", gap: 8, cursor: writable ? "pointer" : "default" },
+            children: [
+              S.jsx("input", {
+                type: "checkbox",
+                checked: plainText,
+                disabled: !writable,
+                onChange: (e) => setPlainText(e.target.checked),
+              }),
+              S.jsx("span", { children: "纯文本发送（iMessage 不支持 Markdown，发送前自动去除 **、#、列表等语法标记）" }),
             ],
           }),
           S.jsxs("div", {

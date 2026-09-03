@@ -37,6 +37,10 @@ const GatewaySchema = z.object({
   toolCallReplies: z.boolean(),
   /** 纯文本清洗开关：iMessage 不支持 Markdown，开启后 send() 出口统一转纯文本。 */
   plainText: z.boolean(),
+  /** 入站消息时间戳注入开关：投递用户消息前加 `[周三 YYYY-MM-DD HH:MM UTC+8] ` 前缀，让模型感知当前时间。默认开。 */
+  injectTimestamp: z.boolean(),
+  /** 时间戳时区（IANA 名）：显式配置不读系统时区。默认 Asia/Shanghai。 */
+  userTimezone: z.string(),
   /** turn 级单步超时（秒）：step 超过该时长被 dsh-turn-guard 强制 cancel；不配/0 = 不限制。 */
   stepTimeoutSec: z.number(),
   /** 停止指令关键词表：agent 忙碌时整条精确匹配这些词即中断当前轮；不配 = 默认多语言表（见 DEFAULT_STOP_KEYWORDS）。 */
@@ -109,9 +113,11 @@ class GatewayService extends TypertRemoteService {
     const streamReplies = snap?.streamReplies !== false;
     const toolCallReplies = snap?.toolCallReplies !== false;
     const plainText = snap?.plainText !== false;
+    const injectTimestamp = snap?.injectTimestamp !== false;
+    const userTimezone = typeof snap?.userTimezone === "string" && snap.userTimezone.trim() ? snap.userTimezone.trim() : "Asia/Shanghai";
     const stepTimeoutSec = typeof snap?.stepTimeoutSec === "number" && snap.stepTimeoutSec > 0 ? snap.stepTimeoutSec : 0;
     const stopKeywords = Array.isArray(snap?.stopKeywords) ? snap.stopKeywords : undefined;
-    return { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, plainText, stepTimeoutSec, stopKeywords, writable: true };
+    return { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, plainText, injectTimestamp, userTimezone, stepTimeoutSec, stopKeywords, writable: true };
   }
 
   /** 写入配置到 settings.yaml 的 imessage 用户层。
@@ -131,11 +137,15 @@ class GatewayService extends TypertRemoteService {
     const streamReplies = typeof payload?.streamReplies === "boolean" ? payload.streamReplies : current.streamReplies !== false;
     const toolCallReplies = typeof payload?.toolCallReplies === "boolean" ? payload.toolCallReplies : current.toolCallReplies !== false;
     const plainText = typeof payload?.plainText === "boolean" ? payload.plainText : current.plainText !== false;
+    const injectTimestamp = typeof payload?.injectTimestamp === "boolean" ? payload.injectTimestamp : current.injectTimestamp !== false;
+    const userTimezone = typeof payload?.userTimezone === "string" && payload.userTimezone.trim()
+      ? payload.userTimezone.trim()
+      : typeof current?.userTimezone === "string" && current.userTimezone.trim() ? current.userTimezone.trim() : "Asia/Shanghai";
     const stepTimeoutSec = typeof payload?.stepTimeoutSec === "number" && payload.stepTimeoutSec > 0 ? payload.stepTimeoutSec : 0;
     const stopKeywords = Array.isArray(payload?.stopKeywords)
       ? payload.stopKeywords
       : Array.isArray(current?.stopKeywords) ? current.stopKeywords : undefined;
-    const section = { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, plainText, stepTimeoutSec, ...(stopKeywords ? { stopKeywords } : {}) };
+    const section = { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, plainText, injectTimestamp, userTimezone, stepTimeoutSec, ...(stopKeywords ? { stopKeywords } : {}) };
     try { console.log(`[${new Date().toLocaleString("zh-CN", { hour12: false })}] [im] setConfig: replace section=${JSON.stringify(section).slice(0, 240)}`); } catch { /* ignore */ }
     await this.scope.replace(section);
     return { ok: true };

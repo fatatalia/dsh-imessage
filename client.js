@@ -94,6 +94,7 @@ window.__ModuleLoader__.load({
       const [streamReplies, setStreamReplies] = React.useState(true);
       const [toolCallReplies, setToolCallReplies] = React.useState(true);
       const [plainText, setPlainText] = React.useState(true);
+      const [injectTimestamp, setInjectTimestamp] = React.useState(true);
       const [stepTimeoutSec, setStepTimeoutSec] = React.useState(0);
       const [saved, setSaved] = React.useState(false);
       const [loadTick, setLoadTick] = React.useState(0);
@@ -113,6 +114,7 @@ window.__ModuleLoader__.load({
             if (typeof cfg?.streamReplies === "boolean") setStreamReplies(cfg.streamReplies);
             if (typeof cfg?.toolCallReplies === "boolean") setToolCallReplies(cfg.toolCallReplies);
             if (typeof cfg?.plainText === "boolean") setPlainText(cfg.plainText);
+            if (typeof cfg?.injectTimestamp === "boolean") setInjectTimestamp(cfg.injectTimestamp);
             if (typeof cfg?.stepTimeoutSec === "number") setStepTimeoutSec(cfg.stepTimeoutSec);
             setState({ status: "ready", writable: cfg?.writable !== false });
           }, () => {
@@ -137,7 +139,7 @@ window.__ModuleLoader__.load({
       };
 
       const save = () => {
-        const payload = { routes: buildRoutes(), autoReply, streamReplies, toolCallReplies, plainText, stepTimeoutSec };
+        const payload = { routes: buildRoutes(), autoReply, streamReplies, toolCallReplies, plainText, injectTimestamp, stepTimeoutSec };
         if (cmd.trim()) payload.imsgCmd = cmd.trim();
         else payload.clearImsgCmd = true;
         Promise.resolve()
@@ -250,6 +252,18 @@ window.__ModuleLoader__.load({
                 onChange: (e) => setPlainText(e.target.checked),
               }),
               S.jsx("span", { children: "纯文本发送（iMessage 不支持 Markdown，发送前自动去除 **、#、列表等语法标记）" }),
+            ],
+          }),
+          S.jsxs("label", {
+            style: { marginTop: 10, display: "flex", alignItems: "center", gap: 8, cursor: writable ? "pointer" : "default" },
+            children: [
+              S.jsx("input", {
+                type: "checkbox",
+                checked: injectTimestamp,
+                disabled: !writable,
+                onChange: (e) => setInjectTimestamp(e.target.checked),
+              }),
+              S.jsx("span", { children: "入站消息时间戳（投递前加 [周三 2026-09-03 02:30 UTC+8] 前缀，让模型感知当前时间）" }),
             ],
           }),
           S.jsxs("div", {

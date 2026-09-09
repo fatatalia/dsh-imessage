@@ -96,6 +96,8 @@ window.__ModuleLoader__.load({
       const [plainText, setPlainText] = React.useState(true);
       const [injectTimestamp, setInjectTimestamp] = React.useState(true);
       const [stepTimeoutSec, setStepTimeoutSec] = React.useState(0);
+      const [autoHeal, setAutoHeal] = React.useState(true);
+      const [healthIntervalMin, setHealthIntervalMin] = React.useState(5);
       const [saved, setSaved] = React.useState(false);
       const [loadTick, setLoadTick] = React.useState(0);
 
@@ -116,6 +118,8 @@ window.__ModuleLoader__.load({
             if (typeof cfg?.plainText === "boolean") setPlainText(cfg.plainText);
             if (typeof cfg?.injectTimestamp === "boolean") setInjectTimestamp(cfg.injectTimestamp);
             if (typeof cfg?.stepTimeoutSec === "number") setStepTimeoutSec(cfg.stepTimeoutSec);
+            if (typeof cfg?.autoHeal === "boolean") setAutoHeal(cfg.autoHeal);
+            if (typeof cfg?.healthIntervalMin === "number") setHealthIntervalMin(cfg.healthIntervalMin);
             setState({ status: "ready", writable: cfg?.writable !== false });
           }, () => {
             if (current) setState({ status: "error", writable: true });
@@ -139,7 +143,7 @@ window.__ModuleLoader__.load({
       };
 
       const save = () => {
-        const payload = { routes: buildRoutes(), autoReply, streamReplies, toolCallReplies, plainText, injectTimestamp, stepTimeoutSec };
+        const payload = { routes: buildRoutes(), autoReply, streamReplies, toolCallReplies, plainText, injectTimestamp, stepTimeoutSec, autoHeal, healthIntervalMin };
         if (cmd.trim()) payload.imsgCmd = cmd.trim();
         else payload.clearImsgCmd = true;
         Promise.resolve()
@@ -283,6 +287,38 @@ window.__ModuleLoader__.load({
               S.jsx("span", {
                 style: { color: "var(--dsw-alias-label-tertiary)", fontSize: 12 },
                 children: "秒，单步（一次模型请求+工具执行）超过该时长强制中断，0/留空 = 不限制",
+              }),
+            ],
+          }),
+          S.jsxs("label", {
+            style: { marginTop: 10, display: "flex", alignItems: "center", gap: 8, cursor: writable ? "pointer" : "default" },
+            children: [
+              S.jsx("input", {
+                type: "checkbox",
+                checked: autoHeal,
+                disabled: !writable,
+                onChange: (e) => setAutoHeal(e.target.checked),
+              }),
+              S.jsx("span", { children: "注入自愈（启动时 + 定时检查 imsg 注入，异常自动 imsg launch 恢复；关闭则完全不检查）" }),
+            ],
+          }),
+          S.jsx("div", {
+            style: { marginTop: 6, display: "flex", alignItems: "center", gap: 8 },
+            children: [
+              S.jsx("label", { style: { flex: "0 0 auto" }, children: "注入检查间隔（分钟）" }),
+              S.jsx("input", {
+                type: "number",
+                min: 1,
+                max: 60,
+                step: 1,
+                style: { width: 90, padding: "4px 8px", borderRadius: 6, border: "1px solid var(--dsw-alias-divider, #ddd)" },
+                value: healthIntervalMin,
+                disabled: !writable,
+                onChange: (e) => setHealthIntervalMin(Math.max(1, Math.min(60, Number(e.target.value) || 5))),
+              }),
+              S.jsx("span", {
+                style: { color: "var(--dsw-alias-label-tertiary)", fontSize: 12 },
+                children: "1-60，默认 5；注入自愈开启时生效",
               }),
             ],
           }),

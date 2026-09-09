@@ -45,6 +45,10 @@ const GatewaySchema = z.object({
   stepTimeoutSec: z.number(),
   /** 停止指令关键词表：agent 忙碌时整条精确匹配这些词即中断当前轮；不配 = 默认多语言表（见 DEFAULT_STOP_KEYWORDS）。 */
   stopKeywords: z.array(z.string()),
+  /** 注入自愈开关：开启后启动时 + 每 healthIntervalMin 分钟检查 imsg 注入，异常自动 launch 恢复；关闭则不检查也不 launch。 */
+  autoHeal: z.boolean(),
+  /** 注入健康检查间隔（分钟，1-60）：autoHeal 开启时的检查周期。 */
+  healthIntervalMin: z.number(),
 });
 
 // ── Typert wire schemas ───────────────────────────────────────────────────
@@ -117,7 +121,10 @@ class GatewayService extends TypertRemoteService {
     const userTimezone = typeof snap?.userTimezone === "string" && snap.userTimezone.trim() ? snap.userTimezone.trim() : "Asia/Shanghai";
     const stepTimeoutSec = typeof snap?.stepTimeoutSec === "number" && snap.stepTimeoutSec > 0 ? snap.stepTimeoutSec : 0;
     const stopKeywords = Array.isArray(snap?.stopKeywords) ? snap.stopKeywords : undefined;
-    return { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, plainText, injectTimestamp, userTimezone, stepTimeoutSec, stopKeywords, writable: true };
+    const autoHeal = snap?.autoHeal !== false;
+    const healthIntervalMin = typeof snap?.healthIntervalMin === "number" && snap.healthIntervalMin >= 1
+      ? Math.min(Math.floor(snap.healthIntervalMin), 60) : 5;
+    return { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, plainText, injectTimestamp, userTimezone, stepTimeoutSec, stopKeywords, autoHeal, healthIntervalMin, writable: true };
   }
 
   /** 写入配置到 settings.yaml 的 imessage 用户层。
@@ -145,7 +152,10 @@ class GatewayService extends TypertRemoteService {
     const stopKeywords = Array.isArray(payload?.stopKeywords)
       ? payload.stopKeywords
       : Array.isArray(current?.stopKeywords) ? current.stopKeywords : undefined;
-    const section = { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, plainText, injectTimestamp, userTimezone, stepTimeoutSec, ...(stopKeywords ? { stopKeywords } : {}) };
+    const autoHeal = typeof payload?.autoHeal === "boolean" ? payload.autoHeal : current.autoHeal !== false;
+    const healthIntervalMin = typeof payload?.healthIntervalMin === "number" && payload.healthIntervalMin >= 1
+      ? Math.min(Math.floor(payload.healthIntervalMin), 60) : 5;
+    const section = { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, plainText, injectTimestamp, userTimezone, stepTimeoutSec, ...(stopKeywords ? { stopKeywords } : {}), autoHeal, healthIntervalMin };
     try { console.log(`[${new Date().toLocaleString("zh-CN", { hour12: false })}] [im] setConfig: replace section=${JSON.stringify(section).slice(0, 240)}`); } catch { /* ignore */ }
     await this.scope.replace(section);
     return { ok: true };
@@ -161,6 +171,8 @@ export function apply(ctx, config) {
       routes: {},
       imsgCmd: "imsg",
       autoReply: true,
+      autoHeal: true,
+      healthIntervalMin: 5,
     },
   });
   // 配置 remote（配置页读写）

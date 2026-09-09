@@ -52,6 +52,8 @@ imessage:
     "+8613800000000": "/Users/<you>/dsh/mayacode"   # handle → 工作区
   imsgCmd: "sudo -u <you> imsg"   # 网关以 root 运行需降级；不配置则直接执行 imsg
   autoReply: true                  # 收到外部消息是否自动回复
+  autoLaunch: true                 # imsg 自动注入：开启 = 启动时 + 定时检查注入状态，异常自动 imsg launch 恢复；关闭 = 不检查不注入
+  healthIntervalMin: 5             # 注入检查间隔（分钟，1-60，仅 autoLaunch 开启时生效）
   # stopKeywords:                  # 可选：覆盖默认停止词表（不配 = 内置多语言表，见下节）
   #   - "停止"
   #   - "stop"
@@ -80,6 +82,18 @@ ps aux | grep "imsg rpc"                          # 验证监听进程
 # 观察网关会话：ls ~/.dsh/sessions/*/ | grep gateway-
 # 日志：/var/log/dsh-web.log（[im] 前缀）
 ```
+
+## 注入自动恢复（autoLaunch）
+
+Messages.app 的注入（`DYLD_INSERT_LIBRARIES`）可能因进程被杀/崩溃而丢失，导致 RPC 监听失效。`autoLaunch: true`（默认）时网关自动保障注入：
+
+- **探针**：`imsg status --json` 的 `bridge_version >= 2` 判定注入正常（`advanced_features` / `message` 字段在未注入时仍返回 true，**不可靠**）
+- **检查时机**：启动时 + 每 `healthIntervalMin` 分钟（1-60，默认 5）
+- **自动恢复**：检测异常时执行 `launchctl asuser <uid> /usr/bin/sudo -u <you> /usr/local/bin/imsg launch`，最多重试 3 次（首次常超时，重试即成功）；恢复后自动重启 RPC 监听衔接新注入
+- **日志**：注入正常时静默；异常时输出「注入检测异常，尝试自动恢复」→「注入已自动恢复」
+- **关闭**：`autoLaunch: false` 后不检查也不自动注入（适合手动管理注入的场景）
+
+> 实现要点（踩坑记录）：launch 必须在目标用户的 **GUI 会话上下文**执行（root 直接 `sudo -u` 会因无 GUI 上下文而超时失败），故用 `launchctl asuser <uid>`；且 launchd 服务 PATH 极简（无 `/usr/local/bin`），spawn 必须用**绝对路径**（否则 `posix_spawn ENOENT`）。
 
 ## 停止指令（消息通道中断）
 

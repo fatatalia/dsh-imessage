@@ -195,8 +195,18 @@ export function apply(ctx, config) {
     debug: (m) => { try { Logger?.debug?.(m); } catch {} },
   };
   log.info("GatewayCore 创建，依赖注入完成（agents/sessions/defaultModel/agentPresets）");
+  // 0.1.5 起 agents.create/resume 需要 ownerCtx 第一参（0.1.2 为单参 options）。
+  // 按函数形参个数探测，双版本兼容：0.1.2 直接透传，0.1.5 包装补 ctx。
+  const agentsSvc = ctx.get("agents");
+  const agents = agentsSvc.create.length >= 2
+    ? {
+        get: (id) => agentsSvc.get(id),
+        create: (options) => agentsSvc.create(ctx, options),
+        resume: (options) => agentsSvc.resume(ctx, options),
+      }
+    : agentsSvc;
   const core = new GatewayCore({
-    agents: ctx.get("agents"),
+    agents,
     defaultModel: ctx.get("agentDefaultModel"),
     sessions: ctx.get("sessions"),
     agentPresets: ctx.get("agentPresets"),

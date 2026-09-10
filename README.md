@@ -119,6 +119,7 @@ agent 处理中（busy）时，向 iMessage 发送整条精确匹配停止词的
 ## 开发要点（web 进程 create agent 须知）
 
 - web 进程 `agents.create` 必须用 agent-presets 组合 setup（`presets.mount` + 模型选择），否则 create 挂起
+- **agents.create/resume 双版本兼容**（dsh 0.1.5 起需 `ownerCtx` 第一参，0.1.2 为单参 options）：按函数形参个数探测（`create.length >= 2`）包装，同一 bundle 双版本通用（2026-09-10 适配）
 - create/resume 判断：先查 `sessionPersistence.list()` 是否有该 id，有则 `resume`，无则 `create`——避免 create 同 id 造成 id collision
 - 改代码后重启 web 生效（web profile 的 HMR 已禁用）
 - **投递串行链**：同一 sender 的 deliver 串行执行（防并发覆盖 `_streamSeenSeq` 导致历史全量重发，一次 379 条事故的根因）。停止指令必须在**入链之前**拦截——串行链会让"停止"排队等前一条 deliver 完成，等轮到它时 agent 已 idle、拦截失效；排队消息用 deliver 代次（`_deliverGeneration`）作废，停止后旧代次消息直接丢弃

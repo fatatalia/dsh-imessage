@@ -93,6 +93,7 @@ window.__ModuleLoader__.load({
       const [autoReply, setAutoReply] = React.useState(true);
       const [streamReplies, setStreamReplies] = React.useState(true);
       const [toolCallReplies, setToolCallReplies] = React.useState(true);
+      const [compactionNotice, setCompactionNotice] = React.useState(true);
       const [plainText, setPlainText] = React.useState(true);
       const [injectTimestamp, setInjectTimestamp] = React.useState(true);
       const [stepTimeoutSec, setStepTimeoutSec] = React.useState(0);
@@ -115,6 +116,7 @@ window.__ModuleLoader__.load({
             if (typeof cfg?.autoReply === "boolean") setAutoReply(cfg.autoReply);
             if (typeof cfg?.streamReplies === "boolean") setStreamReplies(cfg.streamReplies);
             if (typeof cfg?.toolCallReplies === "boolean") setToolCallReplies(cfg.toolCallReplies);
+            if (typeof cfg?.compactionNotice === "boolean") setCompactionNotice(cfg.compactionNotice);
             if (typeof cfg?.plainText === "boolean") setPlainText(cfg.plainText);
             if (typeof cfg?.injectTimestamp === "boolean") setInjectTimestamp(cfg.injectTimestamp);
             if (typeof cfg?.stepTimeoutSec === "number") setStepTimeoutSec(cfg.stepTimeoutSec);
@@ -143,7 +145,7 @@ window.__ModuleLoader__.load({
       };
 
       const save = () => {
-        const payload = { routes: buildRoutes(), autoReply, streamReplies, toolCallReplies, plainText, injectTimestamp, stepTimeoutSec, autoLaunch, healthIntervalMin };
+        const payload = { routes: buildRoutes(), autoReply, streamReplies, toolCallReplies, compactionNotice, plainText, injectTimestamp, stepTimeoutSec, autoLaunch, healthIntervalMin };
         if (cmd.trim()) payload.imsgCmd = cmd.trim();
         else payload.clearImsgCmd = true;
         Promise.resolve()
@@ -244,6 +246,18 @@ window.__ModuleLoader__.load({
                 onChange: (e) => setToolCallReplies(e.target.checked),
               }),
               S.jsx("span", { children: "工具执行提示（执行工具时即时发送 🔧 描述，如 bash 的 description）" }),
+            ],
+          }),
+          S.jsxs("label", {
+            style: { marginTop: 10, display: "flex", alignItems: "center", gap: 8, cursor: writable ? "pointer" : "default" },
+            children: [
+              S.jsx("input", {
+                type: "checkbox",
+                checked: compactionNotice,
+                disabled: !writable,
+                onChange: (e) => setCompactionNotice(e.target.checked),
+              }),
+              S.jsx("span", { children: "压缩通知（上下文压缩时提示「正在压缩」与压缩量；失败时报原因。关闭后这些异常将无任何提示）" }),
             ],
           }),
           S.jsxs("label", {

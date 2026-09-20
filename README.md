@@ -14,6 +14,7 @@ dsh web 进程（LaunchDaemon，KeepAlive）
     │   ├── 停止指令拦截（busy 时整条精确命中 → cancel + 清排队）
     │   ├── 会话重建拦截（整条精确命中 → 备份 + 归档 → 下条消息开新会话）
     │   ├── agents.create/resume + followup 投递 → 取回复
+    │   ├── _syncStream 事件消费（200ms 轮询）→ assistant 回复 / 🔧 工具提示 / 压缩进度
     │   └── RPC send 回发  → 自动回复
     ├── Typert remote "imessageGateway"（getConfig/setConfig）→ 配置页
     └── 全局 message 工具（任何 agent 可主动发 iMessage）
@@ -25,6 +26,7 @@ dsh web 进程（LaunchDaemon，KeepAlive）
 - **停止指令**：agent 忙碌时整条消息精确命中停止词（多语言词表，含 `/stop`）→ 立即中断当前轮并作废排队消息，无需 web 停止按钮（详见下文「停止指令」节）
 - **会话重建**：整条消息精确命中重建词（多语言词表）→ 备份并归档当前会话、作废排队消息，**下一条消息**开启全新会话（详见下文「会话重建」节）
 - **归档迁移**：原会话被 UI 归档后不再 resume，自动新建会话并持久化映射（`~/.dsh/imessage-gateway-state.json`），新消息延续新会话
+- **压缩通知**：上下文压缩（自动触发，就发生在对话进行中）时，把「正在压缩」与压缩量／失败原因发到 iMessage（详见下文「上下文压缩通知」节）
 - **已读回执**：收到外部消息后立即发 read（`imsg status --json` 探测 `read_receipts`，支持才启用）
 - **typing（keepalive 机制，与 OpenClaw 一致）**：收到消息即发 `typing: true`，此后每 3s 续发一次刷新 iOS 显示；deliver 完成（或同 sender 并发全部结束）时清除定时器并发一次 `typing: false`。经 `_typingChain` 串行保证 on/off 顺序；不再按 `step/start|step/end` 事件开关
 - **出站**：RPC `send`；网关以 root 运行时经 `sudo -u <user>` 降级执行
@@ -62,6 +64,7 @@ imessage:
   # rebuildKeywords:               # 可选：覆盖默认重建词表（不配 = 内置多语言表，见下节）
   #   - "重建会话"
   # rebuildBackup: true            # 重建时先备份会话目录到 ~/.dsh/sessions-backup/（默认开；归档不可逆）
+  compactionNotice: true           # 上下文压缩时把过程与结果发到 iMessage（含失败原因；默认开）
 ```
 
 运行时状态（勿手改）：`~/.dsh/imessage-gateway-state.json`（sender → 当前会话 id）。
@@ -132,7 +135,22 @@ agent 处理中（busy）时，向 iMessage 发送整条精确匹配停止词的
 - **备份**：归档**不可逆**（dsh 无 unarchive 能力），备份是唯一保险；备份失败只告警，不阻塞重建
 - **为什么归档两个候选**：`_deliver` 的候选顺序是 `[sessionMap[sender], sessionIdFor(sender)]`（后者是按 handle 哈希的稳定 id）。只归档映射 id 会让投递**回退到稳定 id 会话**，等于没重建
 - **为什么在入链之前拦截**：与停止指令同因——串行链会让指令排队等前一条 deliver 跑完（可能几十秒）。命中即递增 `_deliverGeneration` 作废排队消息：那些消息属于即将被归档的会话，投递只会写进一个用户再也看不到的地方
-- **与 `/compact` 的区别**：`/compact` 走同一条压缩后端，会话越长摘要越胖，容易撞上 `summary >= shadowed content` 判定无收益而**整次丢弃**（上下文原样保留）。重建会话直接换一个干净会话，不受此限
+- **与 `/compact` 的区别**：手动 `/compact`（`ctx.compaction.compactNow`）选区间时 `retainTokens` **硬编码 0**，只保留最后一个 surface 节点 ⇒ 被压缩区间几乎覆盖整个会话，成功率**高于**自动压缩（自动路径保留量由 `contextWindow × retainRatio` 决定，区间窄，最容易撞上收益判定）。但会话太短时摘要自身（约 6000 token）仍可能不小于被压缩内容而整次丢弃。重建会话直接换一个干净会话，不受此限
+
+## 上下文压缩通知
+
+上下文被压缩时，网关把过程与结果发到 iMessage。压缩发生在**对话进行中**——自动触发（step 边界越过阈值，或 provider 报上下文超限），用户原本对此完全无感，只会觉得「这轮怎么这么慢」。
+
+- **数据来源**：会话事件 `compaction/start`（在摘要 LLM 调用**之前**落盘，故提示是真·实时，不是事后补充）→ `compaction/summary`（压缩量）→ `compaction/end`（成败；失败带 `error` 字符串）
+- **发送**：复用 `_syncStream` 的流式事件消费回路（每 200ms 轮询 + `_streamSeenSeq` 去重），与 `assistant/message`、`tool/call` 提示共用 `_sendChain` 串行链 ⇒ **iMessage 上的顺序与事件 seq 顺序一致**
+- **文案**：
+  - 开始：`⏳ 上下文压缩中（本轮会稍慢）`
+  - 成功：`✅ 上下文已压缩：<N> 项 / 约 <M> tokens`
+  - 失败：`⚠️ 上下文压缩失败：<人话原因>（本次未改动上下文）`，例如「摘要不比被压缩的内容小，上下文保持原样（压缩区间太窄，最常见）」
+- **开关**：`imessage.compactionNotice`（默认 `true`，配置页可切）。关闭后压缩成败**完全静默**（即此功能之前的行为）
+- **只报本通道的会话**：轮询只覆盖 `_activeStreams` 里正在投递的 (agent, sender)，Web GUI / 心跳会话的压缩不会打扰手机
+- **为什么不做「发关键词触发压缩」**：手动压缩要求 agent **空闲且无 open turn**（`compactNow` 走 `runMaintenance`，phase 非 idle 直接 `busy`），而自动压缩反过来**必须**在 turn 内（`owner` 非空分支强制 `openTurn !== null`）；两者时点互斥，手动路径只在两轮之间可用，收益远小于自动路径的可观测性
+- **`error` 是字符串不是错误码**：`compaction/end` 的 `error` 由 `errorChain(error)` 产出，无结构化 code，只能按子串归类（`COMPACTION_ERROR_HINTS`）；未命中则原样透出并截断 160 字，保底仍可诊断
 
 ## 安全红线
 

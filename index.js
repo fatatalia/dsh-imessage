@@ -28,13 +28,15 @@ export const Config = z.object({
   statePath: z.string().default(join(homedir(), ".dsh", "imessage-gateway-state.json")),
 });
 
-/** `imessage` settings namespace 数据 schema：路由表 + imsgCmd + autoReply + streamReplies + toolCallReplies + stepTimeoutSec + plainText。 */
+/** `imessage` settings namespace 数据 schema：路由表 + imsgCmd + autoReply + streamReplies + toolCallReplies + compactionNotice + stepTimeoutSec + plainText。 */
 const GatewaySchema = z.object({
   routes: z.dict(z.string()),
   imsgCmd: z.string().required(),
   autoReply: z.boolean(),
   streamReplies: z.boolean(),
   toolCallReplies: z.boolean(),
+  /** 压缩事件通知开关：上下文被压缩时提示"正在压缩"与压缩结果（含失败原因）。默认开。 */
+  compactionNotice: z.boolean(),
   /** 纯文本清洗开关：iMessage 不支持 Markdown，开启后 send() 出口统一转纯文本。 */
   plainText: z.boolean(),
   /** 入站消息时间戳注入开关：投递用户消息前加 `[周三 YYYY-MM-DD HH:MM UTC+8] ` 前缀，让模型感知当前时间。默认开。 */
@@ -116,6 +118,7 @@ class GatewayService extends TypertRemoteService {
     const autoReply = snap?.autoReply !== false;
     const streamReplies = snap?.streamReplies !== false;
     const toolCallReplies = snap?.toolCallReplies !== false;
+    const compactionNotice = snap?.compactionNotice !== false;
     const plainText = snap?.plainText !== false;
     const injectTimestamp = snap?.injectTimestamp !== false;
     const userTimezone = typeof snap?.userTimezone === "string" && snap.userTimezone.trim() ? snap.userTimezone.trim() : "Asia/Shanghai";
@@ -124,7 +127,7 @@ class GatewayService extends TypertRemoteService {
     const autoLaunch = snap?.autoLaunch !== false;
     const healthIntervalMin = typeof snap?.healthIntervalMin === "number" && snap.healthIntervalMin >= 1
       ? Math.min(Math.floor(snap.healthIntervalMin), 60) : 5;
-    return { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, plainText, injectTimestamp, userTimezone, stepTimeoutSec, stopKeywords, autoLaunch, healthIntervalMin, writable: true };
+    return { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, compactionNotice, plainText, injectTimestamp, userTimezone, stepTimeoutSec, stopKeywords, autoLaunch, healthIntervalMin, writable: true };
   }
 
   /** 写入配置到 settings.yaml 的 imessage 用户层。
@@ -143,6 +146,7 @@ class GatewayService extends TypertRemoteService {
     const autoReply = typeof payload?.autoReply === "boolean" ? payload.autoReply : current.autoReply !== false;
     const streamReplies = typeof payload?.streamReplies === "boolean" ? payload.streamReplies : current.streamReplies !== false;
     const toolCallReplies = typeof payload?.toolCallReplies === "boolean" ? payload.toolCallReplies : current.toolCallReplies !== false;
+    const compactionNotice = typeof payload?.compactionNotice === "boolean" ? payload.compactionNotice : current.compactionNotice !== false;
     const plainText = typeof payload?.plainText === "boolean" ? payload.plainText : current.plainText !== false;
     const injectTimestamp = typeof payload?.injectTimestamp === "boolean" ? payload.injectTimestamp : current.injectTimestamp !== false;
     const userTimezone = typeof payload?.userTimezone === "string" && payload.userTimezone.trim()
@@ -155,7 +159,7 @@ class GatewayService extends TypertRemoteService {
     const autoLaunch = typeof payload?.autoLaunch === "boolean" ? payload.autoLaunch : current.autoLaunch !== false;
     const healthIntervalMin = typeof payload?.healthIntervalMin === "number" && payload.healthIntervalMin >= 1
       ? Math.min(Math.floor(payload.healthIntervalMin), 60) : 5;
-    const section = { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, plainText, injectTimestamp, userTimezone, stepTimeoutSec, ...(stopKeywords ? { stopKeywords } : {}), autoLaunch, healthIntervalMin };
+    const section = { routes, imsgCmd, autoReply, streamReplies, toolCallReplies, compactionNotice, plainText, injectTimestamp, userTimezone, stepTimeoutSec, ...(stopKeywords ? { stopKeywords } : {}), autoLaunch, healthIntervalMin };
     try { console.log(`[${new Date().toLocaleString("zh-CN", { hour12: false })}] [im] setConfig: replace section=${JSON.stringify(section).slice(0, 240)}`); } catch { /* ignore */ }
     await this.scope.replace(section);
     return { ok: true };
@@ -238,10 +242,10 @@ export function apply(ctx, config) {
     else drainRegistered = false; // 服务被注销：允许下次重新注册
   });
 
-  // 配置热更新：配置页保存后立即推给运行中的网关（autoReply/streamReplies/toolCallReplies），无需重启。
+  // 配置热更新：配置页保存后立即推给运行中的网关（autoReply/streamReplies/toolCallReplies/compactionNotice），无需重启。
   scope.watch((next) => {
     core.applyConfig(next);
-    log.info(`配置热更新: routes=${Object.keys(core.routes).length}条 autoReply=${core.autoReply} streamReplies=${core.streamReplies} toolCallReplies=${core.toolCallReplies}`);
+    log.info(`配置热更新: routes=${Object.keys(core.routes).length}条 autoReply=${core.autoReply} streamReplies=${core.streamReplies} toolCallReplies=${core.toolCallReplies} compactionNotice=${core.compactionNotice}`);
   });
 
   // 注册全局 `message` 工具：任何 agent（含心跳会话）可调用它发 iMessage。

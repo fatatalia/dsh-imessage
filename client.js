@@ -21,9 +21,11 @@ window.__ModuleLoader__.load({
     const S = require("react/jsx-runtime");
 
     // ── remote 贡献：声明 host remote service 的方法签名 ─────────────────────
-    // client 边界只要求 parse()；服务端 MANIFEST 负责严格校验。
+    // 0.1.7：客户端 typert registry 同样严格校验 strict codec，必须带 create() 工厂
+    // （dsh-typert-registry/lib/client.js:1357），否则设置卡片报
+    // "typert: <id> result strict codec has no create() factory"。
     const identity = (value) => value;
-    const codec = (symbol) => ({ mode: "strict", typeSymbol: symbol, schema: { parse: identity } });
+    const codec = (symbol) => ({ mode: "strict", typeSymbol: symbol, schema: { parse: identity }, create: () => ({ parse: identity }) });
 
     const CONTRIBUTION = {
       package: "dsh-imessage",

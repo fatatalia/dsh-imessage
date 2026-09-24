@@ -2,6 +2,16 @@
 
 把 iMessage 收发完整接入 DeepSeek Harness（dsh）：**RPC 监听入站 → 按 handle 路由工作区 → agent 处理 → 自动回复**。作为 web profile 的 host 插件随 `dsh web` 启停，零 dsh 框架改动。
 
+## dsh 版本兼容性
+
+**要求 dsh ≥ 0.1.7-rc.1**（已在 0.1.7-rc.1 实测通过）。
+
+- **`ctx.settings.register()` 已移除**（2026-09-24）：原 `imessage` settings namespace 并入插件 `Config`，可热改字段标 `.volatile()`；`inject` 去掉 `settings`。
+- **Typert strict codec 必须带 `create()` 工厂**（0.1.7 客户端校验）。
+- **`lib/gateway-core.mjs` 两处健壮性修复**（2026-09-24，均导致「发『停止』→ 整个 dsh 重启」）：
+  - `task.finally(cb)` 会把 `_deliver` 的 rejection 泄漏成**未处理拒绝**，二次升级为 `dsh: fatal load failure` 让进程退出 → 改用 `then(noop, noop)` 先行吞错，清理逻辑照常；
+  - `reason !== undefined` 放行了 `null`，随后 `reason.kind` 抛 `TypeError` → 改为可选链取一次 `reasonKind`，判断与日志插值共用。
+
 ## 架构
 
 ```

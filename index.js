@@ -18,51 +18,53 @@ import { GatewayCore, splitCmd } from "./lib/gateway-core.mjs";
 
 export const name = "dsh-imessage";
 
-// 需要 typert/settings（配置 remote）+ agents/agentPresets/workspaceRegistry/sessionPersistence/sessionTitle/tools（网关投递+归属+标题+message工具）。
-export const inject = ["typert", "settings", "agents", "agentDefaultModel", "agentPresets", "sessions", "workspaceRegistry", "sessionPersistence", "sessionTitle", "tools"];
+// 需要 typert（配置 remote）+ agents/agentPresets/workspaceRegistry/sessionPersistence/sessionTitle/tools（网关投递+归属+标题+message工具）。
+export const inject = ["typert", "agents", "agentDefaultModel", "agentPresets", "sessions", "workspaceRegistry", "sessionPersistence", "sessionTitle", "tools"];
 
 // 插件自身 config schema（settingsPath 指向 $DSH_HOME/settings.yaml；statePath 存 sender→会话映射）。
 // 默认值基于 homedir() 推导，不写死个人路径。
+//
+// 2026-09-24 适配 dsh 0.1.7：ctx.settings.register() 已移除，原 `imessage`
+// settings namespace 并入插件 Config；.volatile() 字段可在设置页热改，改动由
+// loader 提交进运行中的引用并广播 loader/volatile-update。
 export const Config = z.object({
   settingsPath: z.string().default(join(homedir(), ".dsh", "settings.yaml")),
   statePath: z.string().default(join(homedir(), ".dsh", "imessage-gateway-state.json")),
-});
-
-/** `imessage` settings namespace 数据 schema：路由表 + imsgCmd + autoReply + streamReplies + toolCallReplies + compactionNotice + stepTimeoutSec + plainText。 */
-const GatewaySchema = z.object({
-  routes: z.dict(z.string()),
-  imsgCmd: z.string().required(),
-  autoReply: z.boolean(),
-  streamReplies: z.boolean(),
-  toolCallReplies: z.boolean(),
+  /** 路由表：handle → 工作区路径。 */
+  routes: z.dict(z.string()).default({}).volatile(),
+  /** imsg CLI 调用前缀（可为 sudo 包装）。 */
+  imsgCmd: z.string().default("imsg").volatile(),
+  autoReply: z.boolean().default(true).volatile(),
+  streamReplies: z.boolean().volatile(),
+  toolCallReplies: z.boolean().volatile(),
   /** 压缩事件通知开关：上下文被压缩时提示"正在压缩"与压缩结果（含失败原因）。默认开。 */
-  compactionNotice: z.boolean(),
+  compactionNotice: z.boolean().volatile(),
   /** 纯文本清洗开关：iMessage 不支持 Markdown，开启后 send() 出口统一转纯文本。 */
-  plainText: z.boolean(),
+  plainText: z.boolean().volatile(),
   /** 入站消息时间戳注入开关：投递用户消息前加 `[周三 YYYY-MM-DD HH:MM UTC+8] ` 前缀，让模型感知当前时间。默认开。 */
-  injectTimestamp: z.boolean(),
+  injectTimestamp: z.boolean().volatile(),
   /** 时间戳时区（IANA 名）：显式配置不读系统时区。默认 Asia/Shanghai。 */
-  userTimezone: z.string(),
+  userTimezone: z.string().volatile(),
   /** turn 级单步超时（秒）：step 超过该时长被 dsh-turn-guard 强制 cancel；不配/0 = 不限制。 */
-  stepTimeoutSec: z.number(),
+  stepTimeoutSec: z.number().volatile(),
   /** 停止指令关键词表：agent 忙碌时整条精确匹配这些词即中断当前轮；不配 = 默认多语言表（见 DEFAULT_STOP_KEYWORDS）。 */
-  stopKeywords: z.array(z.string()),
+  stopKeywords: z.array(z.string()).volatile(),
   /** 注入自愈开关：开启后启动时 + 每 healthIntervalMin 分钟检查 imsg 注入，异常自动 launch 恢复；关闭则不检查也不 launch。 */
-  autoLaunch: z.boolean(),
+  autoLaunch: z.boolean().default(true).volatile(),
   /** 注入健康检查间隔（分钟，1-60）：autoLaunch 开启时的检查周期。 */
-  healthIntervalMin: z.number(),
+  healthIntervalMin: z.number().default(5).volatile(),
 });
 
 // ── Typert wire schemas ───────────────────────────────────────────────────
 // Typert 要求 codec.schema 是带 `parse(value)` 的对象。这里手工构造
 // parse（宽松校验），避免引入 zod 依赖；client 端已做基本校验兜底。
 function parseObj() {
-  return {
-    parse(value) {
-      if (typeof value !== "object" || value === null) throw new Error("expected object");
-      return value;
-    },
+  // 0.1.7：typert strict codec 必须有 create() 工厂（gateway 走 codec.create().parse(v)）。
+  const parse = (value) => {
+    if (typeof value !== "object" || value === null) throw new Error("expected object");
+    return value;
   };
+  return { parse, create: () => ({ parse }) };
 }
 const getResultSchema = parseObj();
 const setPayloadSchema = parseObj();
@@ -81,7 +83,7 @@ const MANIFEST = {
       method: "getConfig",
       invocation: { kind: "direct" },
       parameters: [],
-      result: { mode: "strict", typeSymbol: "dsh-imessage#GatewayConfig", schema: getResultSchema },
+      result: { mode: "strict", typeSymbol: "dsh-imessage#GatewayConfig", schema: getResultSchema, create: () => getResultSchema },
     },
     {
       id: "dsh-imessage#imessageGateway/setConfig",
@@ -94,10 +96,10 @@ const MANIFEST = {
           name: "payload",
           wire: "payload",
           source: "json",
-          codec: { mode: "strict", typeSymbol: "dsh-imessage#SetPayload", schema: setPayloadSchema },
+          codec: { mode: "strict", typeSymbol: "dsh-imessage#SetPayload", schema: setPayloadSchema, create: () => setPayloadSchema },
         },
       ],
-      result: { mode: "strict", typeSymbol: "dsh-imessage#SetResult", schema: setResultSchema },
+      result: { mode: "strict", typeSymbol: "dsh-imessage#SetResult", schema: setResultSchema, create: () => setResultSchema },
     },
   ],
   model: { services: [], events: [], objects: [] },
@@ -170,15 +172,33 @@ export function apply(ctx, config) {
   // 注册 schema + 拿 scope（host 侧读写，落盘 settings.yaml）。
   // base 只放中性默认值：routes 不能硬编码具体号码（base+user 合并会让删除的路由
   // 又回来——"删路由不生效"的根因），业务路由全部走 user 层。
-  const scope = ctx.settings.register("imessage", GatewaySchema, {
-    base: {
-      routes: {},
-      imsgCmd: "imsg",
-      autoReply: true,
-      autoLaunch: true,
-      healthIntervalMin: 5,
+  // 0.1.7：配置即插件 Config 的 volatile 字段，这里适配出等价的 scope 外壳。
+  const scope = {
+    get: () => ({
+      routes: config.routes.get(),
+      imsgCmd: config.imsgCmd.get(),
+      autoReply: config.autoReply.get(),
+      streamReplies: config.streamReplies.get(),
+      toolCallReplies: config.toolCallReplies.get(),
+      compactionNotice: config.compactionNotice.get(),
+      plainText: config.plainText.get(),
+      injectTimestamp: config.injectTimestamp.get(),
+      userTimezone: config.userTimezone.get(),
+      stepTimeoutSec: config.stepTimeoutSec.get(),
+      stopKeywords: config.stopKeywords.get(),
+      autoLaunch: config.autoLaunch.get(),
+      healthIntervalMin: config.healthIntervalMin.get(),
+    }),
+    async update(patch) {
+      const editor = ctx.get("configEditor");
+      const entry = ctx.fiber?.entry;
+      if (!editor || entry === undefined) return;
+      await editor.edit(entry, (current) => ({ ...current, ...patch }));
     },
-  });
+    watch(cb) {
+      ctx.on("loader/volatile-update", () => { cb(scope.get()); });
+    },
+  };
   // 配置 remote（配置页读写）
   new GatewayService(ctx, scope);
   ctx.effect(() => ctx.typert.register(MANIFEST), "dsh-imessage: typert manifest");
@@ -221,6 +241,16 @@ export function apply(ctx, config) {
     settingsPath: config.settingsPath,
     statePath: config.statePath,
   });
+  // ── 0.1.7 修复：必须显式喂一次初始配置 ──────────────────────────────────
+  // 配置来源已从 settings.yaml 文本改为插件 Config 的 volatile 字段，
+  // 但 GatewayCore 的构造函数仍带着旧默认值（toolCallReplies = true 等）。
+  // 而下面的 scope.watch 只是在 ctx.on("loader/volatile-update") 上注册回调，
+  // **启动时不会触发** —— 少了这一步，进程每次重启都会退回默认值，
+  // 表现为「设置页关掉工具执行提示 → 当场生效 → 一重启又开始发」。
+  // （旧路径 loadConfig() 读 settingsPath，而该文件在 0.1.7 已改名为
+  //   settings.yaml.imported，readFile 抛 ENOENT 被 catch 吞掉，形同虚设。）
+  core.applyConfig(scope.get());
+  log.info(`配置已初始化: routes=${Object.keys(core.routes).length}条 autoReply=${core.autoReply} streamReplies=${core.streamReplies} toolCallReplies=${core.toolCallReplies} compactionNotice=${core.compactionNotice}`);
   ctx.on("dispose", () => core.stopListener());
   core.startListener().then(() => log.info("网关监听已启动")).catch((e) => log.error(`启动监听失败 ${e instanceof Error ? e.message : e}`));
 
